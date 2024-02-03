@@ -1,88 +1,118 @@
+/*
+    --@ Author: Cencyte
+    --@ Date Released: 2∕2∕24
+    --@ Description: Select a character from a text field, and then have the character's unicode info displayed in a tooltip.
+    --@ Version: 0.0
+    --@ License: MIT
+    --@ Limitations:
+        • Doesn't work with notepad
+        • You need to manually set the path to the Powershell script that accesses the API.
+        • Released "As-Is"
+        • Windows only
+        • Path to file has to not be from Google Drive (G:\)
+        • List certainly not exhaustive
+*/
+
 #Requires AutoHotkey v2.0
-#SingleInstance, Force
+#SingleInstance Force
+#Warn All, Off
+FileEncoding "UTF-8"
+Original_Clipboard := ""
+global prev_Text := ""
+global switched := ""
+global output := ""
+last_Char := ""
+outputArray := ""
+pwsh_IsRunning := false
+tempFile := A_Temp . "\" . A_ScriptName . ".tmp"
+MatchesFile := A_Temp . "\" . "Test-Rest-Matches.tmp"
+
+;♠
+;Specify the path for the Powershell script in the psScript variable
+psScript := "C:\Users\[Your Username]\Documents\...\Test-Rest.ps1"
+;
+
 paused := true
-
-;TrayTip, Title, This is a tray tip message.
-;Displays a popup @ the system tray.
-
-;Gui, Add, Text,, This is a custom dialog box.
-;Gui, Show
-
+TrayTip "ToolTips Active: Text Selection" , A_ScriptName, "Mute" 
+TraySetIcon("No (Blue).ico", , true)
+MyGui := Gui("+Border +Caption +DPIScale +MaximizeBox +OwnDialogs +Resize", "Get Character Code")
+iconsize := 128
+hIcon := LoadPicture("No (Blue).ico", "Icon GDI+ w" . iconsize . " h" . iconsize, &imgType)
+SendMessage(0x0080, 1, hIcon, MyGui)
 SetTimer TooltipLoop, 50
 return
 TooltipLoop() {
-if (pwsh_IsRunning)
-return
-local charPos
-local ControlWidth
-local ControlHeight
-local MouseX
-local MouseY
-local ControlX
-local ControlY
-local pwsh_IsRunning := false
-;local Text_Fields_ClassXX = {Notepad: "Edit1", Word: "_WwG1", Wordpad: "RICHEDIT50W1"}
-MouseGetPos(&MouseX, &MouseY, &ID, &control)
-title := WinGetTitle(ID) 
-if title != "" and control {
-ControlGetPos(&ControlX, &ControlY, &ControlWidth, &ControlHeight, control, ID)
- if WinActive("ahk_class Notepad") and RegexMatch(title, " - Notepad$", &Match) != 0 and title and control {
-    if control == "Edit1" or control == "_WwG1" or control == "RICHEDIT50W1" { ;Notepad, Word, Wordpad
-        Text := EditGetSelectedText(control, title)
-        }
-    else {
-        return
-    }
-    ; Calculate the character position 
+    global
+    if (pwsh_IsRunning) {
+    return
+}
+    local MouseX
+    local MouseY
+    local ControlX
+    local ControlY
+    local ControlWidth
+    local ControlHeight
+    local ID
     CoordMode "Mouse", "Screen"
     CoordMode "ToolTip", "Screen"
-    ControlGetPos(&ControlX, &ControlY, &ControlWidth, &ControlHeight, control, title)
-    ;MouseX is screen size, ControlX is window for application that is being controlled size. (Wherever the mouse cursor is, if it happens to equal "Edit1", "_WwG1" or "RICHEDIT50W1")
-    PixelX := (MouseX - ControlX) / ControlWidth ;Ranges are 0 to 1 for both x, and y. Consider a fullscreen control window. Not much different from the origtinal size of the screen represented in coordinates from MouseX and MouseY.
-    PixelY := (MouseY - ControlY) / ControlHeight
-    CharacterPos := Round(PixelX * StrLen(text))
-    tooltip("CharacterPos is: " . CharacterPos)
-    ; Get the character code at the calculated position 
-    if (CharacterPos >= 0 && CharacterPos < StrLen(text)) {
-        charPos := CharacterPos
-        CharCode := Ord(SubStr(text, CharacterPos + 1, 1))
-        SelectedChar = SubStr(text, CharacterPos + 1, 1)
-        ToolTip(
-            ;"PixelX:" . PixelX .
-            ;"PixelY:" . PixelY .
-            "Character Code:" . CharCode
-            "SelectedChar:" . SelectedChar
-            "CharPos:" . charPos
-            )
-            Thread "NoTimers"
-            RunWait A_ComSpec " /c PowerShell.exe -File 'C:\Users\FireSongz\Documents\PowerShell\PS Scripts\Test-Rest.ps1' -InputValue" . CharCode . "," . AnotherValue, , output
-            outputArray := StrSplit(output, ",") ; All Four BigNames are returned from Tes-Rest.ps1 via Write-Output through the "output" variable.
-            site_Info := { Character: A_Args[0],  UTF Code: A_Args[1], Name: A_Args[2],Family: A_Args[3] }
-
-            ; Build a string from the site_Info array
-            site_InfoStr := ""
-            for key, value in site_Info
-                site_InfoStr .= key . ": " . value . "`n"
-
-            ; Build a string from the outputArray
-            outputArrayStr := ""
-            for index, value in outputArray
-                outputArrayStr .= "Index " . index . ": " . value . "`n"
-
-            ; Display the strings in a MsgBox
-            MsgBox "site_Info:`n" . site_InfoStr . "`noutputArray:`n" . outputArrayStr
-
-            if CharacterPos != charPos {
-            SetTimer, TimerAction, 1000
-            Thread "NoTimers", false
+    MouseGetPos(&MouseX, &MouseY, &ID, &control)
+    title := WinGetTitle(ID) 
+    if title != "" and control {
+        if GetKeyState("LBUTTON") {
+            ControlGetPos(&ControlX, &ControlY, &ControlWidth, &ControlHeight, control, ID)
+            PixelX := (MouseX - ControlX) / ControlWidth
+            PixelY := (MouseY - ControlY) / ControlHeight
+            if !(switched) {
+                switched := true
+                SelectedChar := ""
+                outputArrayStr := ""
+                MouseGetPos(&otherX, &otherY)
+                Original_Clipboard := A_Clipboard
+                }
+            delx := Abs(MouseX - otherX)
+            if (delx >= 4 && delx <= 20) {
+                SendInput "^c"
+                CharCode := Format("{:X}", Ord(SubStr(A_Clipboard, 1, 1)))
+                SelectedChar := SubStr(A_Clipboard, 1, 1)
+                if (FileExist(psScript)) {
+                    outputArray := ""
+                    if (SelectedChar != SubStr(Original_Clipboard, 1, 1)) && (last_Char != SelectedChar) {
+                    pwsh_IsRunning := true
+                    RunWait A_ComSpec " /c PowerShell.exe -File `"" . psScript . "`" -CharCode " . CharCode . " -SelectedChar " . SelectedChar . " > `"" . tempFile . "`"", , "Hide" 
+                    pwsh_IsRunning := false
+                    output := RegExReplace(FileRead(tempFile, "UTF-8"), "�", "") ;https://en.wikipedia.org/wiki/Non-breaking_space
+                    FileDelete tempFile
+                    FileAppend output, tempFile, "UTF-8"
+                    }
+                } else {
+                    MsgBox "The file does not exist at the specified path:" . psScript
+                    MsgBox "SelectedChar:" . SelectedChar
+                }
+                outputArray := StrSplit(output, "`n", , 4) 
+                len := outputArray.Length
+                if len == 4 {
+                    outputArrayStr := ""
+                    for index, value in outputArray {
+                        if index == len {
+                            outputArrayStr .= value    
+                            } else {
+                            outputArrayStr .= value . "`n"
+                        }
+                    }
+                } 
+            ToolTip outputArrayStr
             return
             }
-        } else {
+        }
+        else if switched && !(GetKeyState("LBUTTON")) {
+            outputArrayStr := ""
+            output := ""
+            outputArray := ""
+            switched := false
+            last_Char := SelectedChar
+            otherX := 0
+            A_Clipboard := Original_Clipboard
             ToolTip
-        }
-        return 
-        } else {
-            return
-        }
-        }
-;Remember to also output the selected character to the Powershell script.
+        } 
+    }
+}

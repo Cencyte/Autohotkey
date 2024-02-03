@@ -1,5 +1,12 @@
 #SingleInstance
 ;KeyHistory 500
+
+TraySetIcon("No (Blue).ico", , true)
+iconsize := 128
+hIcon := LoadPicture("No (Blue).ico", "Icon GDI+ w" . iconsize . " h" . iconsize, &imgType)
+;MyGui := Gui("+Border +Caption +DPIScale +MaximizeBox +OwnDialogs +Resize", "Testing Grounds 12∕16∕23 3：57 AM")
+;SendMessage(0x0080, 1, hIcon, MyGui) ;The 1 allows for large icon.
+
 SetNumLockState "On"
 InstallKeybdHook
 InstallMouseHook
